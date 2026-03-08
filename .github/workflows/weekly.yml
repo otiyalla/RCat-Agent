@@ -1,0 +1,65 @@
+name: Weekly Agent Run
+
+on:
+  schedule:
+    # Every Monday at 9:00 AM UTC
+    - cron: "0 9 * * MON"
+  workflow_dispatch:
+    inputs:
+      week:
+        description: "Week start date (YYYY-MM-DD) — defaults to current Monday"
+        required: false
+      tasks:
+        description: "Space-separated task names to run (default: all)"
+        required: false
+      report_only:
+        description: "Only generate the weekly report"
+        type: boolean
+        default: false
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run weekly agent tasks
+        run: |
+          ARGS="--weekly"
+          if [ -n "${{ github.event.inputs.week }}" ]; then
+            ARGS="$ARGS --week ${{ github.event.inputs.week }}"
+          fi
+          if [ -n "${{ github.event.inputs.tasks }}" ]; then
+            ARGS="$ARGS --tasks ${{ github.event.inputs.tasks }}"
+          fi
+          if [ "${{ github.event.inputs.report_only }}" = "true" ]; then
+            ARGS="$ARGS --report-only"
+          fi
+          bun run src/main.ts $ARGS
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: gpt-4o
+          REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_API_KEY }}
+          REVENUECAT_PROJECT_ID: ${{ secrets.REVENUECAT_PROJECT_ID }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
+          OPERATOR_NAME: ${{ secrets.OPERATOR_NAME }}
+          DRY_RUN: "false"
+          AGENT_DATA_DIR: ./data
+
+      - name: Upload data artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agent-data-${{ github.run_id }}
+          path: data/
+          retention-days: 90
